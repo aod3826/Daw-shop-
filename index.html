@@ -1174,12 +1174,12 @@ async function initLiff() {
         });
       }
     }
-
+// ========================================
+    // Initialize App (แก้เป็นแบบนี้ครับ)
     // ========================================
-    // Initialize App
-    // ========================================
-    document.addEventListener('DOMContentLoaded', () => {
-      loadData();
+    document.addEventListener('DOMContentLoaded', async () => {
+      await initLiff(); // <--- เพิ่มบรรทัดนี้ เพื่อรอให้ LINE เชื่อมต่อเสร็จก่อน
+      loadData();       // แล้วค่อยโหลดเมนูมาแสดง
     });
 
   </script>
