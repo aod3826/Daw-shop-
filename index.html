@@ -454,7 +454,22 @@ const CONFIG = {
   USE_MOCK_DATA: false,
   LIFF_ID: '2008933274-cQhoTxw9' // 👈 เอาเลข ID ของคุณมาใส่ตรงนี้!
 };
-
+// ========================================
+// LIFF Initialization
+// ========================================
+async function initLiff() {
+  try {
+    await liff.init({ liffId: CONFIG.LIFF_ID });
+    if (!liff.isLoggedIn()) {
+      liff.login();
+    } else {
+      const profile = await liff.getProfile();
+      console.log("Logged in as:", profile.displayName);
+    }
+  } catch (err) {
+    console.error('LIFF Init Error:', err);
+  }
+}
     // ========================================
     // Mock Data
     // ========================================
