@@ -567,34 +567,71 @@ async function initLiff() {
       }
     }
 
-    // ========================================
-    // Data Loading
-    // ========================================
-    async function loadData() {
-      try {
-        if (CONFIG.USE_MOCK_DATA) {
-          state.categories = MOCK_DATA.categories;
-          state.menus = MOCK_DATA.menus;
-          state.optionGroups = MOCK_DATA.optionGroups;
-          state.systemConfig = MOCK_DATA.systemConfig;
-          state.shopOpen = MOCK_DATA.systemConfig.SHOP_OPEN;
-        } else {
-          const response = await fetch(`${CONFIG.GAS_URL}?action=getMenu`);
-          const data = await response.json();
-          // Process data...
-        }
-        
-        updateMarquee();
-        render();
-      } catch (error) {
-        console.error('Load Data Error:', error);
-        Swal.fire({
-          icon: 'error',
-          title: 'เกิดข้อผิดพลาด',
-          text: 'ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่อีกครั้ง'
-        });
+    /// ========================================
+// Data Loading (REAL DATA - SAFE VERSION)
+// ========================================
+async function loadData() {
+  try {
+    console.log('🔄 เริ่มโหลดข้อมูล...');
+
+    // ===== กรณีใช้ Mock =====
+    if (CONFIG.USE_MOCK_DATA === true) {
+      console.log('🧪 ใช้ MOCK DATA');
+
+      state.categories = MOCK_DATA.categories || [];
+      state.menus = MOCK_DATA.menus || [];
+      state.optionGroups = MOCK_DATA.optionGroups || [];
+      state.systemConfig = MOCK_DATA.systemConfig || {};
+      state.shopOpen = !!state.systemConfig.SHOP_OPEN;
+
+    } 
+    // ===== กรณีใช้ข้อมูลจริงจาก GAS =====
+    else {
+      console.log('🌐 โหลดข้อมูลจาก GAS');
+
+      if (!CONFIG.GAS_URL) {
+        throw new Error('ยังไม่ได้ตั้งค่า CONFIG.GAS_URL');
       }
+
+      const url = `${CONFIG.GAS_URL}?action=getMenu`;
+      console.log('➡️ Request:', url);
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error('เชื่อมต่อ GAS ไม่สำเร็จ');
+      }
+
+      const data = await response.json();
+      console.log('📦 Data จาก GAS:', data);
+
+      // ===== Validation ป้องกัน data พัง =====
+      state.categories = data.categories || [];
+      state.menus = data.menus || [];
+      state.optionGroups = data.optionGroups || [];
+      state.systemConfig = data.systemConfig || {};
+      state.shopOpen = !!state.systemConfig.SHOP_OPEN;
     }
+
+    // ===== ตรวจสอบผลลัพธ์ =====
+    console.log('✅ โหลดสำเร็จ');
+    console.log('หมวด:', state.categories.length);
+    console.log('เมนู:', state.menus.length);
+
+    updateMarquee();
+    render();
+
+  } catch (error) {
+    console.error('❌ Load Data Error:', error);
+
+    Swal.fire({
+      icon: 'error',
+      title: 'โหลดข้อมูลไม่สำเร็จ',
+      text: error.message || 'กรุณาลองใหม่อีกครั้ง'
+    });
+  }
+}
+
 
     // ========================================
     // Render Functions
