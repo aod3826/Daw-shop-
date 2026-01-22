@@ -567,16 +567,16 @@ async function initLiff() {
       }
     }
 
-    /// ========================================
-// Data Loading (REAL DATA - SAFE VERSION)
+   // ========================================
+// Data Loading (FIX FOR REAL GAS DATA)
 // ========================================
 async function loadData() {
   try {
-    console.log('🔄 เริ่มโหลดข้อมูล...');
+    console.log('🔄 เริ่มโหลดข้อมูล');
 
-    // ===== กรณีใช้ Mock =====
+    // ===== ใช้ MOCK =====
     if (CONFIG.USE_MOCK_DATA === true) {
-      console.log('🧪 ใช้ MOCK DATA');
+      console.log('🧪 MOCK DATA');
 
       state.categories = MOCK_DATA.categories || [];
       state.menus = MOCK_DATA.menus || [];
@@ -585,38 +585,46 @@ async function loadData() {
       state.shopOpen = !!state.systemConfig.SHOP_OPEN;
 
     } 
-    // ===== กรณีใช้ข้อมูลจริงจาก GAS =====
+    // ===== ใช้ข้อมูลจริงจาก GAS =====
     else {
-      console.log('🌐 โหลดข้อมูลจาก GAS');
-
-      if (!CONFIG.GAS_URL) {
-        throw new Error('ยังไม่ได้ตั้งค่า CONFIG.GAS_URL');
-      }
-
       const url = `${CONFIG.GAS_URL}?action=getMenu`;
-      console.log('➡️ Request:', url);
+      console.log('🌐 Fetch:', url);
 
       const response = await fetch(url);
+      if (!response.ok) throw new Error('เรียก GAS ไม่สำเร็จ');
 
-      if (!response.ok) {
-        throw new Error('เชื่อมต่อ GAS ไม่สำเร็จ');
-      }
+      const nestedCategories = await response.json();
+      console.log('📦 RAW DATA:', nestedCategories);
 
-      const data = await response.json();
-      console.log('📦 Data จาก GAS:', data);
+      // ✅ GAS ส่งมาเป็น ARRAY ของ Categories
+      state.categories = nestedCategories;
 
-      // ===== Validation ป้องกัน data พัง =====
-      state.categories = data.categories || [];
-      state.menus = data.menus || [];
-      state.optionGroups = data.optionGroups || [];
-      state.systemConfig = data.systemConfig || {};
-      state.shopOpen = !!state.systemConfig.SHOP_OPEN;
+      // ===== แตก Menus ออกมา =====
+      state.menus = [];
+      state.optionGroups = [];
+
+      nestedCategories.forEach(cat => {
+        if (Array.isArray(cat.Menus)) {
+          cat.Menus.forEach(menu => {
+            state.menus.push(menu);
+
+            if (Array.isArray(menu.OptionGroups)) {
+              menu.OptionGroups.forEach(group => {
+                state.optionGroups.push(group);
+              });
+            }
+          });
+        }
+      });
+
+      // ===== ค่า config (ถ้ายังไม่มี ให้ default) =====
+      state.systemConfig = {};
+      state.shopOpen = true;
     }
 
-    // ===== ตรวจสอบผลลัพธ์ =====
     console.log('✅ โหลดสำเร็จ');
-    console.log('หมวด:', state.categories.length);
-    console.log('เมนู:', state.menus.length);
+    console.log('Categories:', state.categories.length);
+    console.log('Menus:', state.menus.length);
 
     updateMarquee();
     render();
@@ -627,7 +635,7 @@ async function loadData() {
     Swal.fire({
       icon: 'error',
       title: 'โหลดข้อมูลไม่สำเร็จ',
-      text: error.message || 'กรุณาลองใหม่อีกครั้ง'
+      text: error.message
     });
   }
 }
