@@ -755,4 +755,396 @@
 
       const group = state.optionGroups[groupIdx];
       const optElement = document.getElementById(`opt-${groupIdx}-${optIdx}`);
-      const checkElement = document.getElementById(`check-${groupIdx}-${optIdx
+      const checkElement = document.getElementById(`check-${groupIdx}-${optIdx}`);
+
+      // Logic การเลือก (Single vs Multi)
+      if (multiSelect) {
+        // เลือกได้หลายอย่าง: กดซ้ำเพื่อยกเลิก
+        const index = selectedOptions[groupIdx].findIndex(idx => idx === optIdx);
+        if (index > -1) {
+          selectedOptions[groupIdx].splice(index, 1); // เอาออก
+          optElement.classList.remove('selected');
+          checkElement.style.display = 'none';
+        } else {
+          selectedOptions[groupIdx].push(optIdx); // ใส่เพิ่ม
+          optElement.classList.add('selected');
+          checkElement.style.display = 'block';
+        }
+      } else {
+        // เลือกได้แค่อย่างเดียว: เคลียร์ของเก่าก่อน
+        // รีเซ็ต UI ของตัวเลือกอื่นในกลุ่มเดียวกัน
+        state.optionGroups[groupIdx].Options.forEach((_, idx) => {
+          const el = document.getElementById(`opt-${groupIdx}-${idx}`);
+          const chk = document.getElementById(`check-${groupIdx}-${idx}`);
+          if (el) el.classList.remove('selected');
+          if (chk) chk.style.display = 'none';
+        });
+
+        // เลือกตัวใหม่
+        selectedOptions[groupIdx] = [optIdx];
+        optElement.classList.add('selected');
+        checkElement.style.display = 'block';
+      }
+    }
+
+    function addToCart() {
+      const menu = window.currentMenu;
+      const options = [];
+      let totalOptionPrice = 0;
+
+      // 1. ตรวจสอบ Required Groups
+      for (let gIdx = 0; gIdx < state.optionGroups.length; gIdx++) {
+        const group = state.optionGroups[gIdx];
+        const selectedInGroup = selectedOptions[gIdx] || [];
+
+        if (group.Required && selectedInGroup.length === 0) {
+          Swal.showValidationMessage(`กรุณาเลือก "${group.GroupName}"`);
+          return false;
+        }
+
+        // เก็บข้อมูล Options ที่เลือก
+        selectedInGroup.forEach(optIdx => {
+          const opt = group.Options[optIdx];
+          options.push(opt);
+          totalOptionPrice += opt.Price;
+        });
+      }
+
+      // 2. สร้าง Item ลงตะกร้า
+      const cartItem = {
+        ...menu,
+        options: options,
+        totalPrice: menu.BasePrice + totalOptionPrice,
+        qty: 1
+      };
+
+      state.cart.push(cartItem);
+      
+      // 3. อัปเดตหน้าจอ
+      render();
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'เพิ่มลงตะกร้าแล้ว',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500
+      });
+    }
+
+    // ========================================
+    // Cart & Checkout Logic
+    // ========================================
+    function openCart() {
+      if (state.cart.length === 0) {
+        Swal.fire({
+          icon: 'info',
+          title: 'ตะกร้าว่างเปล่า',
+          text: 'กรุณาเลือกเมนูอาหารก่อนนะครับ'
+        });
+        return;
+      }
+
+      updateCartModal();
+    }
+
+    function updateCartModal() {
+      const { subtotal, deliveryFee, total } = calculateTotal();
+      
+      // สร้าง HTML รายการในตะกร้า
+      const cartItemsHtml = state.cart.map((item, idx) => `
+        <div class="cart-item">
+          <div class="d-flex justify-content-between mb-2">
+            <span class="fw-bold">${item.MenuName}</span>
+            <span class="fw-bold text-success">${(item.totalPrice * item.qty).toLocaleString()} ฿</span>
+          </div>
+          <div class="small text-muted mb-2">
+            ${item.options.map(opt => `+ ${opt.Label}`).join(', ')}
+          </div>
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="qty-control">
+              <button class="qty-btn bg-light" onclick="updateQty(${idx}, -1)"><i class="fas fa-minus"></i></button>
+              <span class="fw-bold">${item.qty}</span>
+              <button class="qty-btn btn-success text-white" onclick="updateQty(${idx}, 1)"><i class="fas fa-plus"></i></button>
+            </div>
+            <button class="btn btn-sm text-danger" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+      `).join('');
+
+      Swal.fire({
+        title: '<i class="fas fa-shopping-cart"></i> ตะกร้าของฉัน',
+        html: `
+          <div class="text-start bg-light p-3 rounded mb-3" style="max-height: 40vh; overflow-y: auto;">
+            ${cartItemsHtml}
+          </div>
+          
+          <div class="summary-box">
+            <div class="summary-row">
+              <span>ค่าอาหาร</span>
+              <span>${subtotal.toLocaleString()} ฿</span>
+            </div>
+            <div class="summary-row text-danger" id="deliveryRow" style="display: none;">
+              <span>ค่าจัดส่ง</span>
+              <span>${deliveryFee} ฿</span>
+            </div>
+            <div class="summary-total d-flex justify-content-between">
+              <span>ยอดรวม</span>
+              <span id="totalDisplay">${subtotal.toLocaleString()} ฿</span>
+            </div>
+          </div>
+
+          <div class="d-grid gap-2">
+            <button class="btn btn-primary-custom" onclick="openCheckout()">
+              ไปหน้าชำระเงิน <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        `,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: '95%'
+      });
+    }
+
+    function updateQty(idx, delta) {
+      const newQty = state.cart[idx].qty + delta;
+      if (newQty > 0) {
+        state.cart[idx].qty = newQty;
+        // รีเฟรช Modal ตะกร้า
+        updateCartModal(); 
+        // อัปเดต Badge ที่ปุ่มตะกร้าหน้าหลัก
+        render(); 
+      }
+    }
+
+    function removeFromCart(idx) {
+      state.cart.splice(idx, 1);
+      if (state.cart.length === 0) {
+        Swal.close();
+      } else {
+        updateCartModal();
+      }
+      render();
+    }
+
+    function calculateTotal() {
+      const subtotal = state.cart.reduce((sum, item) => sum + (item.totalPrice * item.qty), 0);
+      // ค่าส่งเบื้องต้น 0 (จะคำนวณจริงตอนเลือก Delivery)
+      return { subtotal, deliveryFee: 0, total: subtotal };
+    }
+
+    // ========================================
+    // Checkout Process
+    // ========================================
+    let checkoutState = {
+      deliveryType: 'pickup', // pickup, delivery
+      paymentType: 'cash',    // cash, qr, credit
+      address: '',
+      slipFile: null
+    };
+
+    function openCheckout() {
+      const { subtotal } = calculateTotal();
+      const freeDeliveryMin = state.systemConfig.FREE_DELIVERY_MIN || 500;
+      const deliveryFeeConfig = state.systemConfig.DELIVERY_FEE || 50;
+      
+      // คำนวณค่าส่งใหม่ตาม Logic
+      let deliveryFee = 0;
+      if (checkoutState.deliveryType === 'delivery') {
+        deliveryFee = subtotal >= freeDeliveryMin ? 0 : deliveryFeeConfig;
+      }
+      const finalTotal = subtotal + deliveryFee;
+
+      Swal.fire({
+        title: 'ยืนยันการสั่งซื้อ',
+        html: `
+          <div class="text-start">
+            <h6 class="fw-bold mb-3"><i class="fas fa-truck"></i> การรับสินค้า</h6>
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <div class="payment-option ${checkoutState.deliveryType === 'pickup' ? 'selected' : ''}" 
+                     onclick="setDeliveryType('pickup')">
+                  <i class="fas fa-store text-success"></i> รับเอง
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="payment-option ${checkoutState.deliveryType === 'delivery' ? 'selected' : ''}" 
+                     onclick="setDeliveryType('delivery')">
+                  <i class="fas fa-motorcycle text-warning"></i> ส่งถึงที่
+                </div>
+              </div>
+            </div>
+
+            <div id="addressSection" class="mb-3" style="display: ${checkoutState.deliveryType === 'delivery' ? 'block' : 'none'};">
+              <label class="small text-muted">ที่อยู่จัดส่ง:</label>
+              <textarea id="addressInput" class="form-control" rows="2" placeholder="บ้านเลขที่, ซอย, จุดสังเกต...">${checkoutState.address}</textarea>
+            </div>
+
+            <hr>
+
+            <h6 class="fw-bold mb-3"><i class="fas fa-wallet"></i> วิธีชำระเงิน</h6>
+            
+            <div class="payment-option ${checkoutState.paymentType === 'cash' ? 'selected' : ''}" 
+                 onclick="setPaymentType('cash')">
+              <i class="fas fa-money-bill-wave text-success fs-4 me-3"></i>
+              <div>
+                <div class="fw-bold">เงินสด</div>
+                <small class="text-muted">จ่ายตอนรับสินค้า</small>
+              </div>
+            </div>
+
+            <div class="payment-option ${checkoutState.paymentType === 'qr' ? 'selected' : ''}" 
+                 onclick="setPaymentType('qr')">
+              <i class="fas fa-qrcode text-primary fs-4 me-3"></i>
+              <div>
+                <div class="fw-bold">สแกนจ่าย</div>
+                <small class="text-muted">PromptPay / แนบสลิป</small>
+              </div>
+            </div>
+
+            <div class="payment-option ${checkoutState.paymentType === 'credit' ? 'selected' : ''}" 
+                 onclick="setPaymentType('credit')">
+              <i class="fas fa-user-clock text-info fs-4 me-3"></i>
+              <div>
+                <div class="fw-bold">ค้างจ่าย (สมาชิก)</div>
+                <small class="text-muted">ลงบัญชีไว้ก่อน</small>
+              </div>
+            </div>
+
+            <div id="qrSection" class="mt-3 bg-light p-3 rounded text-center" style="display: ${checkoutState.paymentType === 'qr' ? 'block' : 'none'};">
+              <img src="https://promptpay.io/${state.systemConfig.PROMPTPAY_ID || '0812345678'}/${finalTotal}.png" class="img-fluid mb-2" style="max-width: 150px;">
+              <p class="small text-muted">ยอดโอน: <b class="text-success">${finalTotal} ฿</b></p>
+              <input type="file" id="slipInput" class="form-control" accept="image/*" onchange="handleSlip(this)">
+              <div id="slipPreview" class="mt-2 text-success small"></div>
+            </div>
+
+            <hr>
+
+            <div class="d-flex justify-content-between fw-bold fs-5">
+              <span>ยอดสุทธิ</span>
+              <span class="text-success">${finalTotal.toLocaleString()} ฿</span>
+            </div>
+            ${deliveryFee === 0 && checkoutState.deliveryType === 'delivery' ? '<small class="text-success d-block text-end">ฟรีค่าจัดส่ง!</small>' : ''}
+          </div>
+        `,
+        width: '95%',
+        showCancelButton: true,
+        confirmButtonText: 'ยืนยันการสั่งซื้อ',
+        cancelButtonText: 'ย้อนกลับ',
+        confirmButtonColor: '#10b981',
+        preConfirm: () => {
+          // Validation
+          if (checkoutState.deliveryType === 'delivery') {
+            const addr = document.getElementById('addressInput').value;
+            if (!addr) return Swal.showValidationMessage('กรุณากรอกที่อยู่จัดส่ง');
+            checkoutState.address = addr;
+          }
+          if (checkoutState.paymentType === 'qr' && !checkoutState.slipFile) {
+            return Swal.showValidationMessage('กรุณาแนบสลิปการโอนเงิน');
+          }
+          return submitOrder(finalTotal);
+        }
+      });
+    }
+
+    // Helper functions for Checkout UI
+    function setDeliveryType(type) {
+      checkoutState.deliveryType = type;
+      openCheckout(); // Re-render
+    }
+
+    function setPaymentType(type) {
+      checkoutState.paymentType = type;
+      openCheckout(); // Re-render
+    }
+
+    function handleSlip(input) {
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          checkoutState.slipFile = e.target.result; // Base64 string
+          document.getElementById('slipPreview').innerHTML = `<i class="fas fa-check"></i> แนบสลิปแล้ว (${file.name})`;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    // ========================================
+    // Submit Order API
+    // ========================================
+    async function submitOrder(finalTotal) {
+      Swal.fire({
+        title: 'กำลังส่งออเดอร์...',
+        text: 'กรุณารอสักครู่',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+
+      try {
+        const orderData = {
+          action: 'createOrder',
+          items: state.cart,
+          deliveryType: checkoutState.deliveryType,
+          paymentType: checkoutState.paymentType,
+          address: checkoutState.address,
+          total: finalTotal,
+          slipURL: checkoutState.slipFile, // Send Base64 directly (Backend handles it)
+          userId: 'U' + Date.now() // Mock UserID (In real LIFF, use liff.getProfile())
+        };
+
+        let result;
+        if (CONFIG.USE_MOCK_DATA) {
+          // Simulator
+          await new Promise(r => setTimeout(r, 1500));
+          result = { success: true, orderID: 'ORD-MOCK', queueNumber: state.currentQueue + 1, eta: 15 };
+        } else {
+          // Real API Call
+          const response = await fetch(CONFIG.GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify(orderData)
+          });
+          result = await response.json();
+        }
+
+        if (result.success) {
+          state.cart = []; // Clear Cart
+          state.currentQueue = result.queueNumber; // Update Queue
+          render();
+          
+          Swal.fire({
+            icon: 'success',
+            title: 'สั่งซื้อสำเร็จ!',
+            html: `
+              <h3>คิวของคุณ: <span class="text-danger">#${result.queueNumber}</span></h3>
+              <p>อีกประมาณ ${result.eta} นาทีได้รับอาหารครับ</p>
+            `,
+            confirmButtonText: 'ตกลง'
+          });
+        } else {
+          throw new Error(result.error || 'Unknown error');
+        }
+
+      } catch (error) {
+        console.error(error);
+        Swal.fire({
+          icon: 'error',
+          title: 'เกิดข้อผิดพลาด',
+          text: 'ไม่สามารถสั่งซื้อได้: ' + error.message
+        });
+      }
+    }
+
+    // ========================================
+    // Initialize App
+    // ========================================
+    document.addEventListener('DOMContentLoaded', () => {
+      loadData();
+    });
+
+  </script>
+</body>
+</html>
